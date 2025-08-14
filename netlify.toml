@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Disable secrets scanning for frontend environment variables
+  # These are meant to be public in client-side applications
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
+
+# Alternative: Disable secrets scanning entirely (less secure)
+# SECRETS_SCAN_ENABLED = "false"
+
+[context.production.environment]
+  NODE_ENV = "production"
