@@ -47,7 +47,7 @@ export default function ImageUpload() {
 
     try {
       for (const file of imageFiles) {
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
+        const fileName = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
         
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage

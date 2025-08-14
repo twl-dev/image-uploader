@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Upload Debug Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        input[type="file"] { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Supabase Upload Debug Tool</h1>
+    <p>Replace YOUR_SUPABASE_URL and YOUR_SUPABASE_ANON_KEY below with your actual values</p>
+    <div id="status"></div>
+    
+    <button onclick="testConnection()">Test Connection</button>
+    <button onclick="testUpload()">Test File Upload</button>
+    
+    <br><br>
+    <input type="file" id="testFile" accept="image/*">
+    <button onclick="uploadTestFile()">Upload Selected File</button>
+    
+    <script type="module">
+        // Replace these with your actual Supabase credentials
+        const supabaseUrl = 'YOUR_SUPABASE_URL';
+        const supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+        
+        let supabase;
+        
+        try {
+            const { createClient } = await import('https://cdn.skypack.dev/@supabase/supabase-js');
+            supabase = createClient(supabaseUrl, supabaseAnonKey);
+            addStatus('✅ Supabase client initialized', 'success');
+        } catch (err) {
+            addStatus(`❌ Failed to initialize Supabase: ${err.message}`, 'error');
+        }
+        
+        function addStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            statusDiv.appendChild(div);
+        }
+        
+        window.testConnection = async function() {
+            addStatus('Testing connection...', 'info');
+            
+            try {
+                // Test database connection
+                const { data, error } = await supabase.from('images').select('count');
+                
+                if (error) {
+                    addStatus(`❌ Database Error: ${error.message}`, 'error');
+                    return;
+                }
+                
+                addStatus('✅ Database connection: OK', 'success');
+                
+                // Test storage bucket access
+                const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
+                
+                if (bucketError) {
+                    addStatus(`❌ Storage Error: ${bucketError.message}`, 'error');
+                    return;
+                }
+                
+                addStatus(`✅ Storage connection: OK`, 'success');
+                addStatus(`Available buckets: ${buckets.map(b => b.name).join(', ')}`, 'info');
+                
+                // Test specific bucket access
+                const { data: files, error: listError } = await supabase.storage
+                    .from('ai-images')
+                    .list('uploads', { limit: 1 });
+                
+                if (listError) {
+                    addStatus(`❌ Bucket access error: ${listError.message}`, 'error');
+                } else {
+                    addStatus('✅ ai-images bucket accessible', 'success');
+                }
+                
+            } catch (err) {
+                addStatus(`❌ Connection Error: ${err.message}`, 'error');
+            }
+        };
+        
+        window.testUpload = async function() {
+            addStatus('Testing upload with dummy file...', 'info');
+            
+            try {
+                // Create a small test file
+                const testContent = 'test file content';
+                const testFile = new Blob([testContent], { type: 'text/plain' });
+                const fileName = `uploads/test-${Date.now()}.txt`;
+                
+                const { error: uploadError } = await supabase.storage
+                    .from('ai-images')
+                    .upload(fileName, testFile);
+                
+                if (uploadError) {
+                    addStatus(`❌ Upload Error: ${uploadError.message}`, 'error');
+                    return;
+                }
+                
+                addStatus('✅ Test file uploaded successfully', 'success');
+                
+                // Clean up test file
+                const { error: deleteError } = await supabase.storage
+                    .from('ai-images')
+                    .remove([fileName]);
+                
+                if (deleteError) {
+                    addStatus(`⚠️ Cleanup warning: ${deleteError.message}`, 'info');
+                } else {
+                    addStatus('✅ Test file cleaned up', 'success');
+                }
+                
+            } catch (err) {
+                addStatus(`❌ Upload test failed: ${err.message}`, 'error');
+            }
+        };
+        
+        window.uploadTestFile = async function() {
+            const fileInput = document.getElementById('testFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                addStatus('❌ Please select a file first', 'error');
+                return;
+            }
+            
+            addStatus(`Testing upload of: ${file.name} (${file.size} bytes)`, 'info');
+            
+            try {
+                const fileName = `uploads/${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
+                
+                // Upload to Supabase Storage
+                const { error: uploadError } = await supabase.storage
+                    .from('ai-images')
+                    .upload(fileName, file);
+                
+                if (uploadError) {
+                    addStatus(`❌ Upload Error: ${uploadError.message}`, 'error');
+                    return;
+                }
+                
+                addStatus('✅ File uploaded to storage successfully', 'success');
+                
+                // Save metadata to database
+                const { error: dbError } = await supabase
+                    .from('images')
+                    .insert({
+                        filename: fileName,
+                        original_name: file.name,
+                        file_size: file.size,
+                        uploaded_at: new Date().toISOString()
+                    });
+                
+                if (dbError) {
+                    addStatus(`❌ Database Error: ${dbError.message}`, 'error');
+                    return;
+                }
+                
+                addStatus('✅ Metadata saved to database successfully', 'success');
+                addStatus('🎉 Complete upload test successful!', 'success');
+                
+            } catch (err) {
+                addStatus(`❌ Upload failed: ${err.message}`, 'error');
+            }
+        };
+        
+        // Auto-run connection test on load
+        if (supabase) {
+            setTimeout(testConnection, 1000);
+        }
+    </script>
+</body>
+</html>
